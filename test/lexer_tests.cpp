@@ -33,6 +33,11 @@ void checkPostConditions(const Lexer::TokenState& tokenState, const std::string&
 
 TEST_SUITE_BEGIN("Lexer Tests");
 
+void checkToken(const Lexer::TokenState& lexState, int idx, Lexer::SyntaxKind kind, std::string_view text) {
+    CHECK(lexState.tokens_[idx].is(kind));
+    CHECK_EQ(lexState.tokens_[idx].text, text);
+}
+
 TEST_CASE("Integer Literals") {
     const std::string exampleString = "1 23 456 7890";
 
@@ -41,19 +46,14 @@ TEST_CASE("Integer Literals") {
     // Check that the tokens produced are correct
     CHECK(lexState.tokens_.size() == 8);
 
-    auto checkIndex = [&](const int idx, Lexer::SyntaxKind kind, std::string_view text) -> void {
-        CHECK(lexState.tokens_[idx].is(kind));
-        CHECK_EQ(lexState.tokens_[idx].text, text);
-    };
-
-    checkIndex(0, Lexer::SyntaxKind::IntegerLiteral, "1");
-    checkIndex(1, Lexer::SyntaxKind::Whitespace, " ");
-    checkIndex(2, Lexer::SyntaxKind::IntegerLiteral, "23");
-    checkIndex(3, Lexer::SyntaxKind::Whitespace, " ");
-    checkIndex(4, Lexer::SyntaxKind::IntegerLiteral, "456");
-    checkIndex(5, Lexer::SyntaxKind::Whitespace, " ");
-    checkIndex(6, Lexer::SyntaxKind::IntegerLiteral, "7890");
-    checkIndex(7, Lexer::SyntaxKind::Eof, "");
+    checkToken(lexState, 0, Lexer::SyntaxKind::IntegerLiteral, "1");
+    checkToken(lexState, 1, Lexer::SyntaxKind::Whitespace, " ");
+    checkToken(lexState, 2, Lexer::SyntaxKind::IntegerLiteral, "23");
+    checkToken(lexState, 3, Lexer::SyntaxKind::Whitespace, " ");
+    checkToken(lexState, 4, Lexer::SyntaxKind::IntegerLiteral, "456");
+    checkToken(lexState, 5, Lexer::SyntaxKind::Whitespace, " ");
+    checkToken(lexState, 6, Lexer::SyntaxKind::IntegerLiteral, "7890");
+    checkToken(lexState, 7, Lexer::SyntaxKind::Eof, "");
 
     // Check that the base state is correct
     checkPostConditions(lexState, exampleString);
@@ -73,6 +73,35 @@ TEST_CASE("Symbols") {
     checkPostConditions(lexState, str);
 }
 
+TEST_CASE("Identifiers") {
+    const std::string str = "i iii abcdefghijk i123 3i4";
+    const auto lexState = Lexer::lex(str);
+
+    CHECK_EQ(lexState.tokens_.size(), 11);
+
+    checkToken(lexState, 0, Lexer::SyntaxKind::Identifier, "i");
+    checkToken(lexState, 2, Lexer::SyntaxKind::Identifier, "iii");
+    checkToken(lexState, 4, Lexer::SyntaxKind::Identifier, "abcdefghijk");
+    checkToken(lexState, 6, Lexer::SyntaxKind::Identifier, "i123");
+    checkToken(lexState, 8, Lexer::SyntaxKind::IntegerLiteral, "3");
+    checkToken(lexState, 9, Lexer::SyntaxKind::Identifier, "i4");
+
+    CHECK(lexState.tokens_[10].is(Lexer::SyntaxKind::Eof));
+
+    checkPostConditions(lexState, str);
+
+    SUBCASE("Identifier Assignment") {
+        const std::string example = "i = 55";
+        const auto state = Lexer::lex(example);
+
+        checkToken(state, 0, Lexer::SyntaxKind::Identifier, "i");
+        checkToken(state, 2, Lexer::SyntaxKind::Equals, "=");
+        checkToken(state, 4, Lexer::SyntaxKind::IntegerLiteral, "55");
+
+        checkPostConditions(state, example);
+    }
+}
+
 // All but the last token (EOF) should be unknown, however when concatenating the tokens we must be able to restore the
 // full input.
 TEST_CASE("Unknown Symbols") {
@@ -84,7 +113,6 @@ TEST_CASE("Unknown Symbols") {
         CHECK(tokens[i].is(Lexer::SyntaxKind::ErrorToken));
     }
     CHECK(tokens[tokens.size() - 1].is(Lexer::SyntaxKind::Eof));
-
 
     checkPostConditions(lexState, exampleString);
 }
