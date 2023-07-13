@@ -11,6 +11,7 @@ enum class SyntaxKind : uint16_t {
     ErrorToken,
     Whitespace,
     IntegerLiteral,
+    Equals,
     Eof
 };
 
@@ -19,6 +20,7 @@ inline std::ostream& operator <<(std::ostream& os, SyntaxKind kind) {
         case SyntaxKind::ErrorToken: return os << "ErrorToken";
         case SyntaxKind::Whitespace: return os << "Whitespace";
         case SyntaxKind::IntegerLiteral: return os << "IntegerLiteral";
+        case SyntaxKind::Equals: return os << "Equals";
         case SyntaxKind::Eof: return os << "Eof";
     }
 }
@@ -80,10 +82,12 @@ struct Tokenizer {
                 while (isdigit(cur()) && it_ != endIt_) ++it_;
 
                 addToken(SyntaxKind::IntegerLiteral);
+            } else if (chr == '=') {
+                ++it_;
+                addToken(SyntaxKind::Equals);
             } else {
                 // if we don't recognise this character, simply ingest it as an error token and continue.
                 ++it_;
-
                 addToken(SyntaxKind::ErrorToken);
             }
 

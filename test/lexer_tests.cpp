@@ -6,7 +6,6 @@ void checkPostConditions(const Lexer::TokenState& tokenState, const std::string&
     // The input string is faithfully stored in a point of truth in the token state
     CHECK(tokenState.file_->text_ == basis);
 
-
     if (tokenState.tokens_.empty()) {
         return;
     }
@@ -56,6 +55,20 @@ TEST_CASE("Integer Literals") {
 
     // Check that the base state is correct
     checkPostConditions(lexState, exampleString);
+}
+
+TEST_CASE("Symbols") {
+    const std::string str = "= ==";
+    const auto lexState = Lexer::lex(str);
+
+    CHECK(lexState.tokens_[0].is(Lexer::SyntaxKind::Equals));
+    CHECK(lexState.tokens_[1].is(Lexer::SyntaxKind::Whitespace));
+    // Check that `==` does not bind to a singe token.
+    CHECK(lexState.tokens_[2].is(Lexer::SyntaxKind::Equals));
+    CHECK(lexState.tokens_[3].is(Lexer::SyntaxKind::Equals));
+    CHECK(lexState.tokens_[4].is(Lexer::SyntaxKind::Eof));
+
+    checkPostConditions(lexState, str);
 }
 
 // All but the last token (EOF) should be unknown, however when concatenating the tokens we must be able to restore the
