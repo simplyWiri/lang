@@ -31,6 +31,8 @@ void checkPostConditions(const Lexer::TokenState& tokenState, const std::string&
     CHECK(tokens[tokenIdx].is(Lexer::SyntaxKind::Eof));
 }
 
+TEST_SUITE_BEGIN("Lexer Tests");
+
 TEST_CASE("Integer Literals") {
     const std::string exampleString = "1 23 456 7890";
 
@@ -86,3 +88,5 @@ TEST_CASE("Unknown Symbols") {
 
     checkPostConditions(lexState, exampleString);
 }
+
+TEST_SUITE_END;
