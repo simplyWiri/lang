@@ -51,34 +51,59 @@ struct TokenState {
     std::vector<Token> tokens_;
 };
 
-inline TokenState lex(const std::string& str) {
-    TokenState state = { std::make_shared<File>(str), {} };
-    const auto& text = state.file_->text_;
-    auto& tokens = state.tokens_;
+struct Tokenizer {
+    using StringIterator = std::string::const_iterator;
 
-    for (auto it = text.begin(); it != text.end();) {
-        const auto sequenceBegin = it;
-        const auto chr = *it;
+    explicit Tokenizer(TokenState& tokenState)
+        : tokenState_(tokenState)
+        , it_(tokenState.file_->text_.begin())
+        , endIt_(tokenState.file_->text_.end())
+        , sequenceBeginIt_(tokenState.file_->text_.begin()) { }
 
-        if (isspace(chr)) {
-            while (isspace(*it) && it != text.end()) {
-                ++it;
-            }
-
-            tokens.emplace_back(SyntaxKind::Whitespace, std::string_view{sequenceBegin, it});
-        } else if (std::isdigit(chr)) {
-            while (std::isdigit(*it) && it != text.end()) {
-                ++it;
-            }
-
-            tokens.emplace_back(SyntaxKind::IntegerLiteral, std::string_view{sequenceBegin, it});
-        } else {
-            ++it;
-            tokens.emplace_back(SyntaxKind::ErrorToken, std::string_view{sequenceBegin, it});
-        }
+    void addToken(SyntaxKind kind) {
+        tokenState_.tokens_.emplace_back(kind, std::string_view{sequenceBeginIt_, it_});
     }
 
-    tokens.emplace_back(SyntaxKind::Eof, std::string_view{});
+    char cur() const {
+        return *it_;
+    }
+
+    void lex() {
+        while(it_ != endIt_) {
+            const auto chr = cur();
+
+            if (isspace(chr)) {
+                while (isspace(cur()) && it_ != endIt_) ++it_;
+
+                addToken(SyntaxKind::Whitespace);
+            } else if (isdigit(chr)) {
+                while (isdigit(cur()) && it_ != endIt_) ++it_;
+
+                addToken(SyntaxKind::IntegerLiteral);
+            } else {
+                // if we don't recognise this character, simply ingest it as an error token and continue.
+                ++it_;
+
+                addToken(SyntaxKind::ErrorToken);
+            }
+
+            sequenceBeginIt_ = it_;
+        }
+
+        addToken(SyntaxKind::Eof);
+    }
+
+    TokenState& tokenState_;
+    StringIterator it_;
+    StringIterator endIt_;
+    StringIterator sequenceBeginIt_;
+};
+
+inline TokenState lex(const std::string& str) {
+    TokenState state = { std::make_shared<File>(str), {} };
+
+    Tokenizer tokenizer{state};
+    tokenizer.lex();
 
     return state;
 }
