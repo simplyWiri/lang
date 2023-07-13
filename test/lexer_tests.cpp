@@ -102,6 +102,21 @@ TEST_CASE("Identifiers") {
     }
 }
 
+TEST_CASE("Keywords") {
+    SUBCASE("Return Keyword") {
+        const std::string example = { "return eturn retur n returne" };
+        const auto state = Lexer::lex(example);
+
+        checkToken(state, 0, Lexer::SyntaxKind::ReturnKeyword, "return");
+        checkToken(state, 2, Lexer::SyntaxKind::Identifier, "eturn");
+        checkToken(state, 4, Lexer::SyntaxKind::Identifier, "retur");
+        checkToken(state, 6, Lexer::SyntaxKind::Identifier, "n");
+        checkToken(state, 8, Lexer::SyntaxKind::Identifier, "returne");
+
+        checkPostConditions(state, example);
+    }
+}
+
 // All but the last token (EOF) should be unknown, however when concatenating the tokens we must be able to restore the
 // full input.
 TEST_CASE("Unknown Symbols") {

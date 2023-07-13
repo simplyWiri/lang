@@ -13,6 +13,7 @@ enum class SyntaxKind : uint16_t {
     IntegerLiteral,
     Identifier,
     Equals,
+    ReturnKeyword,
     Eof
 };
 
@@ -23,6 +24,7 @@ inline std::ostream& operator <<(std::ostream& os, SyntaxKind kind) {
         case SyntaxKind::IntegerLiteral: return os << "IntegerLiteral";
         case SyntaxKind::Identifier: return os << "Identifier";
         case SyntaxKind::Equals: return os << "Equals";
+        case SyntaxKind::ReturnKeyword: return os << "ReturnKeyword";
         case SyntaxKind::Eof: return os << "Eof";
     }
 }
@@ -64,8 +66,12 @@ struct Tokenizer {
         , endIt_(tokenState.file_->text_.end())
         , sequenceBeginIt_(tokenState.file_->text_.begin()) { }
 
+    std::string_view getCurrentSlice() const {
+        return { sequenceBeginIt_, it_ };
+    }
+
     void addToken(SyntaxKind kind) {
-        tokenState_.tokens_.emplace_back(kind, std::string_view{sequenceBeginIt_, it_});
+        tokenState_.tokens_.emplace_back(kind, getCurrentSlice());
     }
 
     char cur() const {
@@ -89,7 +95,12 @@ struct Tokenizer {
                 addToken(SyntaxKind::Equals);
             } else if (isalpha(chr)) {
                 while (isalnum(cur()) && it_ != endIt_) ++it_;
-                addToken(SyntaxKind::Identifier);
+
+                if (getCurrentSlice() == "return") {
+                    addToken(SyntaxKind::ReturnKeyword);
+                } else {
+                    addToken(SyntaxKind::Identifier);
+                }
             } else {
                 // if we don't recognise this character, simply ingest it as an error token and continue.
                 ++it_;
