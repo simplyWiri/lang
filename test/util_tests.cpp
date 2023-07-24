@@ -19,10 +19,12 @@ TEST_CASE("Tagged Pointer") {
     CHECK_EQ(floatPointer.get<int>(), nullptr);
 
     SUBCASE("operator=") {
-        util::t_ptr<int, float> a = intPointer;
+        util::t_ptr<int, float> a;
+        a = intPointer;
         CHECK(a.holds<int>());
 
-        util::t_ptr<int, float> b = floatPointer;
+        util::t_ptr<int, float> b;
+        b = floatPointer;
         CHECK(b.holds<float>());
     }
 }

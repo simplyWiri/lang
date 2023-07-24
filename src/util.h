@@ -1,5 +1,9 @@
 #include <cstdint>
 #include <type_traits>
+#include <utility>
+#include <memory>
+#include <cassert>
+
 
 namespace util {
 
@@ -34,6 +38,10 @@ private:
     }
 
 public:
+    t_ptr() {
+        bits_ = 0;
+    }
+
     template<typename T>
     t_ptr(T* pointer) {
         set(pointer);
