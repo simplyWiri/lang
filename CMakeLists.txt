@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(ABSL_PROPAGATE_CXX_STD ON)
 add_subdirectory(ext/abseil EXCLUDE_FROM_ALL)
 
-add_executable(lang test/lexer_tests.cpp test/util_tests.cpp)
+add_executable(lang test/lexer_tests.cpp test/util_tests.cpp test/parse_tests.cpp)
 target_include_directories(lang PUBLIC src ext)
 target_link_libraries(lang absl::span absl::inlined_vector)
 
