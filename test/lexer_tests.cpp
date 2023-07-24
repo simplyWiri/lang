@@ -12,7 +12,8 @@ void checkPostConditions(const Lexer::TokenState& tokenState, const std::string&
 
     // The concatenation of all tokens (and their text) is equal to the input string.
     const auto& tokens = tokenState.tokens_;
-    std::size_t tokenIdx = 0, tokenTextIdx = 0;
+    std::size_t tokenIdx = 0;
+    std::size_t tokenTextIdx = 0;
 
     for (const auto chr : basis) {
         CHECK(tokenIdx < tokens.size());
