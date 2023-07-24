@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 project(grow)
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(lexer_tests test/lexer_tests.cpp)
+add_executable(lexer_tests test/lexer_tests.cpp test/util_tests.cpp)
 target_include_directories(lexer_tests PUBLIC src ext)
 
 if (CMAKE_BUILD_TYPE EQUAL "Release")
@@ -22,6 +22,6 @@ target_link_options(lexer_tests PUBLIC -fuse-ld=/usr/bin/ld.lld)
 # Set up ctest functionality
 enable_testing()
 add_test(
-    NAME lexer_tests
+    NAME tests
     COMMAND $<TARGET_FILE:lexer_tests>
 )
