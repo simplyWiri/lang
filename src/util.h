@@ -62,7 +62,92 @@ public:
     template<typename T>
     t_ptr& operator=(T* pointer) {
         static_assert(validType<T>());
+        assert(bits_ == 0);
         set(pointer);
+    }
+};
+
+// enhancement: Add memoization and interning layer in the arena. As its primary use will be storing tokens/ast nodes on
+// the heap, memoization will reduce memory usage in the heap by a fair amount. For example each whitespace mode will
+// take up 24 bytes in the arena.
+struct arena {
+    constexpr static std::size_t INITIAL_SIZE = 1024 * 64;
+
+protected:
+    void* memory_;
+    std::size_t size_ = 0;
+    std::size_t offset_ = 0;
+
+public:
+    explicit arena(std::size_t initialSize = INITIAL_SIZE) {
+        memory_ = std::malloc(initialSize);
+        size_ = initialSize;
+        offset_ = 0;
+    }
+
+    arena(const arena& other) = delete;
+    arena operator =(const arena& other) = delete;
+
+    arena(arena&& other) noexcept {
+        memory_ = other.memory_;
+        size_ = other.size_;
+        offset_ = other.offset_;
+
+        other.memory_ = nullptr;
+    }
+
+    arena& operator =(arena&& other) noexcept {
+        std::swap(memory_, other.memory_);
+        std::swap(size_, other.size_);
+        std::swap(offset_, other.offset_);
+        return *this;
+    }
+
+    ~arena() {
+        if (memory_) {
+            std::free(memory_);
+        }
+    }
+
+    template<typename T, class... Args>
+    T* alloc(Args&& ... args) noexcept {
+        // Means we do not need to call destructors on these objects.
+        static_assert(std::is_trivially_destructible_v<T>);
+
+        constexpr auto alignment = alignof(T);
+        constexpr auto size = sizeof(T);
+
+        if (auto* memory = alloc(size, alignment)) {
+            return new(memory) T(std::forward<Args>(args)...);
+        }
+
+        return nullptr;
+    }
+
+    void* alloc(std::size_t size, std::size_t alignment = 8) noexcept {
+        auto sizeRemaining = size_ - offset_;
+        void* dest = static_cast<std::byte*>(memory_) + offset_;
+
+        void* res = std::align(alignment, size, dest, sizeRemaining);
+        if (res) {
+            sizeRemaining -= size;
+            offset_ = size_ - sizeRemaining;
+            return res;
+        }
+
+        return nullptr;
+    }
+
+    std::size_t size() const {
+        return size_;
+    }
+
+    std::size_t offset() const {
+        return offset_;
+    }
+
+    const void* memory() const {
+        return memory_;
     }
 };
 
