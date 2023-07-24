@@ -60,17 +60,28 @@ TEST_CASE("Integer Literals") {
 }
 
 TEST_CASE("Symbols") {
-    const std::string str = "= ==";
-    const auto lexState = Lexer::lex(str);
+    SUBCASE("Equals") {
+        const std::string str = "= ==";
+        const auto lexState = Lexer::lex(str);
 
-    CHECK(lexState.tokens_[0].is(Lexer::SyntaxKind::Equals));
-    CHECK(lexState.tokens_[1].is(Lexer::SyntaxKind::Whitespace));
-    // Check that `==` does not bind to a singe token.
-    CHECK(lexState.tokens_[2].is(Lexer::SyntaxKind::Equals));
-    CHECK(lexState.tokens_[3].is(Lexer::SyntaxKind::Equals));
-    CHECK(lexState.tokens_[4].is(Lexer::SyntaxKind::Eof));
+        CHECK(lexState.tokens_[0].is(Lexer::SyntaxKind::Equals));
+        CHECK(lexState.tokens_[1].is(Lexer::SyntaxKind::Whitespace));
+        // Check that `==` does not bind to a singe token.
+        CHECK(lexState.tokens_[2].is(Lexer::SyntaxKind::Equals));
+        CHECK(lexState.tokens_[3].is(Lexer::SyntaxKind::Equals));
+        CHECK(lexState.tokens_[4].is(Lexer::SyntaxKind::Eof));
 
-    checkPostConditions(lexState, str);
+        checkPostConditions(lexState, str);
+    }
+    SUBCASE("Semicolon") {
+        const std::string str = ";";
+        const auto lexState = Lexer::lex(str);
+
+        CHECK(lexState.tokens_[0].is(Lexer::SyntaxKind::Semicolon));
+        CHECK(lexState.tokens_[1].is(Lexer::SyntaxKind::Eof));
+
+        checkPostConditions(lexState, str);
+    }
 }
 
 TEST_CASE("Identifiers") {

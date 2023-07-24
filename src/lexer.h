@@ -13,6 +13,7 @@ enum class SyntaxKind : uint16_t {
     IntegerLiteral,
     Identifier,
     Equals,
+    Semicolon,
     ReturnKeyword,
     Eof
 };
@@ -24,6 +25,7 @@ inline std::ostream& operator <<(std::ostream& os, SyntaxKind kind) {
         case SyntaxKind::IntegerLiteral: return os << "IntegerLiteral";
         case SyntaxKind::Identifier: return os << "Identifier";
         case SyntaxKind::Equals: return os << "Equals";
+        case SyntaxKind::Semicolon: return os << "Semicolon";
         case SyntaxKind::ReturnKeyword: return os << "ReturnKeyword";
         case SyntaxKind::Eof: return os << "Eof";
     }
@@ -93,7 +95,10 @@ struct Tokenizer {
             } else if (chr == '=') {
                 ++it_;
                 addToken(SyntaxKind::Equals);
-            } else if (isalpha(chr)) {
+            } else if (chr == ';') {
+                ++it_;
+                addToken(SyntaxKind::Semicolon);
+            }else if (isalpha(chr)) {
                 while (isalnum(cur()) && it_ != endIt_) ++it_;
 
                 if (getCurrentSlice() == "return") {
