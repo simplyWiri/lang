@@ -1,13 +1,20 @@
 #include "lexer.h"
 #include "util.h"
+#include <absl/container/inlined_vector.h>
 #include <absl/types/span.h>
 #include <cstdint>
+#include <charconv>
+#include <optional>
+#include <iostream>
+
 
 namespace Ast
 {
 
 enum class NodeKind : uint16_t {
-    ErrorNode
+    ErrorNode,
+    IntegerLiteral,
+    File,
 };
 
 // Dynamically sized type (DST), must only be used as a pointer, the "end" of the struct is where the list of children_
@@ -104,6 +111,145 @@ public:
     GreenNode(GreenNode&) = delete;
     GreenNode& operator=(GreenNode&&) = delete;
     GreenNode(GreenNode&&) = delete;
+};
+
+namespace Green {
+
+struct IntegerLiteralNode : public GreenNode {
+    constexpr static bool Matches(NodeKind kind) {
+        return kind == NodeKind::IntegerLiteral;
+    }
+
+    // it's not currently possible to ever be null, but illustrates the point of not being able to rely on the green
+    // tree to be valid, or well-formed.
+    std::optional<int> getInteger() const {
+        if (const auto* maybeToken = tokenMatching(Lexer::SyntaxKind::IntegerLiteral)) {
+            int value;
+            std::from_chars(maybeToken->text.begin(), maybeToken->text.end(), value);
+            return value;
+        }
+        return std::nullopt;
+    }
+};
+}
+
+class Parser {
+    // intentionally 64 bytes
+    struct GreenBuilder {
+        explicit GreenBuilder(uint32_t id)
+            : id(id), children({}) { }
+
+        // The id of the green node, this is unique per-parser
+        uint32_t id;
+        // The children of the green node we are building
+        absl::InlinedVector<GreenNode::ChildType, 6> children;
+    };
+
+    // There is an expectation that at(Lexer::Whitespace) == false. I.e. the parser, while keeping whitespace - no
+    // parsing code needs to know about its existence.
+    bool at(Lexer::SyntaxKind kind) const {
+        return tokenState_.tokens_[tokenIndex_].is(kind);
+    }
+
+    void advance() {
+        const auto& tokens = tokenState_.tokens_;
+
+        do {
+            auto* curToken = arena_.alloc<Lexer::Token>(tokens[tokenIndex_]);
+            eventStack_.back().children.emplace_back(curToken);
+            ++tokenIndex_;
+        } while (at(Lexer::SyntaxKind::Whitespace));
+    }
+
+    // Returns an event index.
+    uint32_t start() {
+        const auto id = eventStack_.emplace_back(eventIndex_++).id;
+        if (at(Lexer::SyntaxKind::Whitespace)) {
+            advance();
+        }
+        return id;
+    }
+
+    GreenNode* finish(uint32_t id, NodeKind kind) {
+        // Sums the length for each child, to get the total length for the parent.
+        const auto getLength = [](const GreenBuilder& builder) -> uint32_t {
+            uint32_t len = 0;
+            for(const auto& child : builder.children) {
+                if (child.holds<Lexer::Token>()) {
+                    len += child.get<Lexer::Token>()->text.size();
+                } else {
+                    len += child.get<GreenNode>()->length();
+                }
+            }
+            return len;
+        };
+
+        // The children which are going to be added to the current node
+        const auto& builder = eventStack_.back();
+        if (builder.id != id) {
+            std::cerr << "Internal parser failure detected, unbalanced `eventStack_`." << std::endl;
+            std::terminate();
+        }
+
+        // The length of the node in characters in the source code
+        const auto nodeLength = getLength(builder);
+
+        auto* node = GreenNode::create(arena_, kind, nodeLength, builder.children);
+        eventStack_.pop_back();
+        return node;
+    }
+
+    void appendChild(uint32_t id, GreenNode* node) {
+        auto& builder = eventStack_.back();
+        if (builder.id != id) {
+            std::cerr << "Internal parser failure detected, unbalanced `eventStack_`." << std::endl;
+            std::terminate();
+        }
+        builder.children.emplace_back(node);
+    }
+public:
+    explicit Parser(const Lexer::TokenState& tokenState)
+        : tokenState_(tokenState) { }
+
+    // file = literal* EOF
+    GreenNode* file() {
+        const auto id = start();
+
+        // do not consume EOF token.
+        while (!at(Lexer::SyntaxKind::Eof)) {
+            if (auto* lit = literal()) {
+                appendChild(id, lit);
+            } else {
+                appendChild(id, error());
+            }
+        }
+
+        return finish(id, NodeKind::File);
+    }
+
+    // literal = integer_literal
+    GreenNode* literal() {
+        if (at(Lexer::SyntaxKind::IntegerLiteral)) {
+            const auto id = start();
+            advance();
+            return finish(id, NodeKind::IntegerLiteral);
+        }
+        return nullptr;
+    }
+
+    // Anything can be an error.
+    GreenNode* error() {
+        const auto id = start();
+        advance();
+        return finish(id, NodeKind::ErrorNode);
+    }
+
+    const Lexer::TokenState& tokenState_;
+    util::arena arena_;
+
+    std::size_t tokenIndex_{0};
+    uint32_t eventIndex_{0};
+    std::vector<GreenBuilder> eventStack_{};
 };
 
 }

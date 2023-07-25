@@ -85,5 +85,64 @@ TEST_CASE("Green Node Access") {
     CHECK_EQ(packedNode->tokenMatching(Lexer::SyntaxKind::ErrorToken, 0), nullptr);
 }
 
+TEST_CASE("Parse File") {
+    Lexer::TokenState state = Lexer::lex("9");
+    Ast::Parser parser{state};
+
+    const auto* root = parser.file();
+    CHECK_EQ(root->kind(), Ast::NodeKind::File);
+    CHECK_EQ(root->numChildren(), 1);
+    CHECK_EQ(root->length(), 1);
+
+    CHECK(root->nodeMatching<Ast::Green::IntegerLiteralNode>());
+
+    const auto* integerLiteralNode = root->nodeMatching<Ast::Green::IntegerLiteralNode>();
+    CHECK_EQ(integerLiteralNode->kind(), Ast::NodeKind::IntegerLiteral);
+    CHECK_EQ(integerLiteralNode->numChildren(), 1);
+    CHECK_EQ(integerLiteralNode->length(), 1);
+    CHECK_EQ(integerLiteralNode->getInteger(), 9);
+
+    CHECK(integerLiteralNode->tokenMatching(Lexer::SyntaxKind::IntegerLiteral));
+}
+
+TEST_CASE("Parse File with Whitespace") {
+    Lexer::TokenState state = Lexer::lex("   9   ");
+    Ast::Parser parser{state};
+
+    const auto* root = parser.file();
+    CHECK_EQ(root->kind(), Ast::NodeKind::File);
+    CHECK_EQ(root->numChildren(), 2); // error, integer literal of '9'
+    CHECK_EQ(root->length(), 7);
+
+    CHECK(root->nodeMatching<Ast::Green::IntegerLiteralNode>());
+
+    const auto* integerLiteralNode = root->nodeMatching<Ast::Green::IntegerLiteralNode>();
+    CHECK_EQ(integerLiteralNode->kind(), Ast::NodeKind::IntegerLiteral);
+    CHECK_EQ(integerLiteralNode->numChildren(), 2);
+    CHECK_EQ(integerLiteralNode->length(), 4);
+    CHECK_EQ(integerLiteralNode->getInteger(), 9);
+
+    CHECK(integerLiteralNode->tokenMatching(Lexer::SyntaxKind::IntegerLiteral));
+}
+
+TEST_CASE("Erroneous Token") {
+    Lexer::TokenState state = Lexer::lex("i 8");
+    Ast::Parser parser{state};
+
+    const auto* root = parser.file();
+    CHECK_EQ(root->kind(), Ast::NodeKind::File);
+    CHECK_EQ(root->numChildren(), 2); // error, integer literal of '8'
+    CHECK_EQ(root->length(), 3);
+
+    CHECK(root->nodeMatching<Ast::Green::IntegerLiteralNode>());
+
+    const auto* integerLiteralNode = root->nodeMatching<Ast::Green::IntegerLiteralNode>();
+    CHECK_EQ(integerLiteralNode->kind(), Ast::NodeKind::IntegerLiteral);
+    CHECK_EQ(integerLiteralNode->numChildren(), 1);
+    CHECK_EQ(integerLiteralNode->length(), 1);
+    CHECK_EQ(integerLiteralNode->getInteger(), 8);
+
+    CHECK(integerLiteralNode->tokenMatching(Lexer::SyntaxKind::IntegerLiteral));
+}
 
 TEST_SUITE_END;
