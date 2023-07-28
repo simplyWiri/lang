@@ -67,7 +67,7 @@ TEST_CASE("Symbols") {
 
         CHECK(lexState.tokens_[0].is(Lexer::SyntaxKind::Equals));
         CHECK(lexState.tokens_[1].is(Lexer::SyntaxKind::Whitespace));
-        // Check that `==` does not bind to a singe token.
+        // Check that `==` does not bind to a single token.
         CHECK(lexState.tokens_[2].is(Lexer::SyntaxKind::Equals));
         CHECK(lexState.tokens_[3].is(Lexer::SyntaxKind::Equals));
         CHECK(lexState.tokens_[4].is(Lexer::SyntaxKind::Eof));
@@ -80,6 +80,19 @@ TEST_CASE("Symbols") {
 
         CHECK(lexState.tokens_[0].is(Lexer::SyntaxKind::Semicolon));
         CHECK(lexState.tokens_[1].is(Lexer::SyntaxKind::Eof));
+
+        checkPostConditions(lexState, str);
+    }
+    SUBCASE("Plus") {
+        const std::string str = "+ ++";
+        const auto lexState = Lexer::lex(str);
+
+        CHECK(lexState.tokens_[0].is(Lexer::SyntaxKind::Plus));
+        CHECK(lexState.tokens_[1].is(Lexer::SyntaxKind::Whitespace));
+        // Check that `++` does not bind to a single token.
+        CHECK(lexState.tokens_[2].is(Lexer::SyntaxKind::Plus));
+        CHECK(lexState.tokens_[3].is(Lexer::SyntaxKind::Plus));
+        CHECK(lexState.tokens_[4].is(Lexer::SyntaxKind::Eof));
 
         checkPostConditions(lexState, str);
     }

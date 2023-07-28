@@ -14,23 +14,10 @@ enum class SyntaxKind : uint16_t {
     Identifier,
     Equals,
     Semicolon,
+    Plus,
     ReturnKeyword,
     Eof
 };
-
-inline std::ostream& operator <<(std::ostream& os, SyntaxKind kind) {
-    switch (kind) {
-        using enum SyntaxKind;
-        case ErrorToken: return os << "ErrorToken";
-        case Whitespace: return os << "Whitespace";
-        case IntegerLiteral: return os << "IntegerLiteral";
-        case Identifier: return os << "Identifier";
-        case Equals: return os << "Equals";
-        case Semicolon: return os << "Semicolon";
-        case ReturnKeyword: return os << "ReturnKeyword";
-        case Eof: return os << "Eof";
-    }
-}
 
 // This enables the use of using `string_view`'s to the data stored by the file
 struct File {
@@ -95,13 +82,7 @@ struct Tokenizer {
                 while (isdigit(cur()) && it_ != endIt_) ++it_;
 
                 addToken(IntegerLiteral);
-            } else if (chr == '=') {
-                ++it_;
-                addToken(Equals);
-            } else if (chr == ';') {
-                ++it_;
-                addToken(Semicolon);
-            }else if (isalpha(chr)) {
+            } else if (isalpha(chr)) {
                 while (isalnum(cur()) && it_ != endIt_) ++it_;
 
                 if (getCurrentSlice() == "return") {
@@ -110,9 +91,14 @@ struct Tokenizer {
                     addToken(Identifier);
                 }
             } else {
-                // if we don't recognise this character, simply ingest it as an error token and continue.
                 ++it_;
-                addToken(ErrorToken);
+                switch(chr) {
+                    case '=': addToken(Equals); break;
+                    case ';': addToken(Semicolon); break;
+                    case '+': addToken(Plus); break;
+                    // if we don't recognise this character, simply ingest it as an error token and continue.
+                    default: addToken(ErrorToken); break;
+                }
             }
 
             sequenceBeginIt_ = it_;
