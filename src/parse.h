@@ -2,6 +2,7 @@
 #include "util.h"
 #include <absl/container/inlined_vector.h>
 #include <absl/types/span.h>
+#include <absl/container/flat_hash_map.h>
 #include <cstdint>
 #include <charconv>
 #include <optional>
@@ -14,6 +15,7 @@ namespace Ast
 enum class NodeKind : uint16_t {
     ErrorNode,
     IntegerLiteral,
+    BinaryExpression,
     File,
 };
 
@@ -67,6 +69,12 @@ public:
     }
 
     template<typename NodeType>
+    const NodeType* as() const {
+        assert(NodeType::Matches(kind_));
+        return static_cast<const NodeType*>(this);
+    }
+
+    template<typename NodeType>
     const NodeType* nodeMatching(int ithOccurrence = 0) const {
         int currentIdx = 0;
         for (int i = 0; i < numChildren_; i++) {
@@ -74,7 +82,7 @@ public:
             if (const auto* node = child.get<GreenNode>()) {
                 if (NodeType::Matches(node->kind_)) {
                     if (currentIdx++ == ithOccurrence) {
-                        return static_cast<const NodeType*>(node);
+                        return node->as<NodeType>();
                     }
                 }
             }
@@ -131,6 +139,24 @@ struct IntegerLiteralNode : public GreenNode {
         return std::nullopt;
     }
 };
+
+struct BinaryExpressionNode : public GreenNode {
+    constexpr static bool Matches(NodeKind kind) {
+        return kind == NodeKind::BinaryExpression;
+    }
+
+    std::optional<const GreenNode*> getLeftExpression() const {
+        return nodeMatching<GreenNode>(0);
+    }
+
+    std::optional<const Lexer::Token*> getOperator() const {
+        return tokenMatching(Lexer::SyntaxKind::Plus);
+    }
+
+    std::optional<const GreenNode*> getRightExpression() const {
+        return nodeMatching<GreenNode>(1);
+    }
+};
 }
 
 class Parser {
@@ -145,10 +171,13 @@ class Parser {
         absl::InlinedVector<GreenNode::ChildType, 6> children;
     };
 
+    Lexer::SyntaxKind currentToken() const {
+        return tokenState_.tokens_[tokenIndex_].kind;
+    }
     // There is an expectation that at(Lexer::Whitespace) == false. I.e. the parser, while keeping whitespace - no
     // parsing code needs to know about its existence.
     bool at(Lexer::SyntaxKind kind) const {
-        return tokenState_.tokens_[tokenIndex_].is(kind);
+        return currentToken() == kind;
     }
 
     void advance() {
@@ -211,13 +240,13 @@ public:
     explicit Parser(const Lexer::TokenState& tokenState)
         : tokenState_(tokenState) { }
 
-    // file = literal* EOF
+    // file = expression* EOF
     GreenNode* file() {
         const auto id = start();
 
         // do not consume EOF token.
         while (!at(Lexer::SyntaxKind::Eof)) {
-            if (auto* lit = literal()) {
+            if (auto* lit = expression()) {
                 appendChild(id, lit);
             } else {
                 appendChild(id, error());
@@ -227,6 +256,59 @@ public:
         return finish(id, NodeKind::File);
     }
 
+    // expression = literal '+' expression
+    //            | literal
+    GreenNode* expression(Lexer::SyntaxKind left = Lexer::SyntaxKind::Eof) {
+        auto* lhs = literal();
+
+        while(true) {
+            const auto right = currentToken();
+            if (rightBindsTighter(left, right)) {
+                const auto binaryExpression = start();
+                advance();
+                auto* rhs = expression(right);
+                appendChild(binaryExpression, lhs);
+                appendChild(binaryExpression, rhs);
+                lhs = finish(binaryExpression, NodeKind::BinaryExpression);
+            } else {
+                break;
+            }
+        }
+
+        return lhs;
+    }
+
+    static bool rightBindsTighter(Lexer::SyntaxKind left, Lexer::SyntaxKind right) {
+        enum Side { Left, Right };
+
+        auto getTightness = [](Lexer::SyntaxKind kind, Side side) -> std::optional<int> {
+            // This may not be immediately clear how this functions. We map a syntax kind, which represents some kind of
+            // binary expression, to a pair of 'Precedence' levels, i.e. how tightly a token should bind to other tokens
+            // the reason we use a pair, is so we can specify left/right associative binding, beyond just precedence. If
+            // the left value is less than the right, an operator is left associative, otherwise it is right associative
+            static absl::flat_hash_map<Lexer::SyntaxKind, std::pair<int, int>> map = {
+                    { Lexer::SyntaxKind::Plus, {1, 2} }
+            };
+
+            const auto maybeIter = map.find(kind);
+            if (maybeIter != map.end()) {
+                const auto [leftTightness, rightTightness] = maybeIter->second;
+
+                return side == Left ? leftTightness : rightTightness;
+            } else {
+                return std::nullopt;
+            }
+        };
+
+        auto rightTightness = getTightness(right, Side::Right);
+        if (rightTightness == std::nullopt) return false;
+
+        auto leftTightness = getTightness(left, Side::Left);
+        if (leftTightness == std::nullopt) return true;
+
+        return *rightTightness > *leftTightness;
+    }
+
     // literal = integer_literal
     GreenNode* literal() {
         if (at(Lexer::SyntaxKind::IntegerLiteral)) {
@@ -234,13 +316,15 @@ public:
             advance();
             return finish(id, NodeKind::IntegerLiteral);
         }
-        return nullptr;
+        return error();
     }
 
     // Anything can be an error.
     GreenNode* error() {
         const auto id = start();
-        advance();
+        if (!at(Lexer::SyntaxKind::Eof)) {
+            advance();
+        }
         return finish(id, NodeKind::ErrorNode);
     }
 

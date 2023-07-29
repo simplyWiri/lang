@@ -7,7 +7,7 @@ add_subdirectory(ext/abseil EXCLUDE_FROM_ALL)
 
 add_executable(lang test/lexer_tests.cpp test/util_tests.cpp test/parse_tests.cpp)
 target_include_directories(lang PUBLIC src ext)
-target_link_libraries(lang absl::span absl::inlined_vector)
+target_link_libraries(lang absl::span absl::inlined_vector absl::flat_hash_map)
 
 
 if (CMAKE_BUILD_TYPE EQUAL "Release")
