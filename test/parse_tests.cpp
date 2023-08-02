@@ -85,173 +85,152 @@ TEST_CASE("Green Node Access") {
     CHECK_EQ(packedNode->tokenMatching(Lexer::SyntaxKind::ErrorToken, 0), nullptr);
 }
 
-TEST_CASE("Parse File") {
-    Lexer::TokenState state = Lexer::lex("9");
-    Ast::Parser parser{state};
+struct ParserFixture {
+    const Ast::GreenNode* getRoot(const std::string& str) {
+        auto& state = states_.emplace_back(Lexer::lex(str));
+        auto& parser = parsers_.emplace_back(state);
+        const auto* file = parser.file();
+        checkPostConditions(file, str);
+        return file;
+    }
 
-    const auto* root = parser.file();
-    CHECK_EQ(root->kind(), Ast::NodeKind::File);
-    CHECK_EQ(root->numChildren(), 1);
-    CHECK_EQ(root->length(), 1);
+    template<typename NodeT>
+    static const NodeT* checkIs(const Ast::GreenNode* node) {
+        REQUIRE(node);
+        CHECK(NodeT::Matches(node->kind()));
+        return node->as<NodeT>();
+    }
 
-    CHECK(root->nodeMatching<Ast::Green::IntegerLiteralNode>());
+    template<typename NodeT>
+    static const NodeT* checkIs(const std::optional<const Ast::GreenNode*> maybeNode) {
+        REQUIRE(maybeNode);
+        return checkIs<NodeT>(*maybeNode);
+    }
 
-    const auto* integerLiteralNode = root->nodeMatching<Ast::Green::IntegerLiteralNode>();
-    CHECK_EQ(integerLiteralNode->kind(), Ast::NodeKind::IntegerLiteral);
-    CHECK_EQ(integerLiteralNode->numChildren(), 1);
-    CHECK_EQ(integerLiteralNode->length(), 1);
-    CHECK_EQ(integerLiteralNode->getInteger(), 9);
+private:
+    static void checkPostConditions(const Ast::GreenNode* syntaxTree, const std::string& grammarStr) {
+        CHECK_EQ(syntaxTree->length(), grammarStr.length());
+    }
 
-    CHECK(integerLiteralNode->tokenMatching(Lexer::SyntaxKind::IntegerLiteral));
-}
+    std::list<Lexer::TokenState> states_;
+    std::list<Ast::Parser> parsers_;
+};
 
-TEST_CASE("Parse File with Whitespace") {
-    Lexer::TokenState state = Lexer::lex("   9   ");
-    Ast::Parser parser{state};
 
-    const auto* root = parser.file();
-    CHECK_EQ(root->kind(), Ast::NodeKind::File);
-    CHECK_EQ(root->numChildren(), 2); // error, integer literal of '9'
-    CHECK_EQ(root->length(), 7);
+TEST_CASE_FIXTURE(ParserFixture, "Baseline") {
+    using namespace Ast::Green;
 
-    CHECK(root->nodeMatching<Ast::Green::IntegerLiteralNode>());
+    SUBCASE("Simple") {
+        // Creates the tree:
+        // File
+        //    IntegerLiteralNode
+        //        Token(IntegerLiteral) (9)
+        const auto* root = getRoot("9");
+        CHECK_EQ(root->numChildren(), 1);
+        CHECK_EQ(root->length(), 1);
 
-    const auto* integerLiteralNode = root->nodeMatching<Ast::Green::IntegerLiteralNode>();
-    CHECK_EQ(integerLiteralNode->kind(), Ast::NodeKind::IntegerLiteral);
-    CHECK_EQ(integerLiteralNode->numChildren(), 2);
-    CHECK_EQ(integerLiteralNode->length(), 4);
-    CHECK_EQ(integerLiteralNode->getInteger(), 9);
+        const auto* integerLiteralNode = root->nodeMatching<IntegerLiteralNode>();
+        CHECK_EQ(integerLiteralNode->kind(), Ast::NodeKind::IntegerLiteral);
+        CHECK_EQ(integerLiteralNode->numChildren(), 1);
+        CHECK_EQ(integerLiteralNode->length(), 1);
+        CHECK_EQ(integerLiteralNode->getInteger(), 9);
 
-    CHECK(integerLiteralNode->tokenMatching(Lexer::SyntaxKind::IntegerLiteral));
-}
+        // Ensure the token is a child of its grammar production
+        CHECK(integerLiteralNode->tokenMatching(Lexer::SyntaxKind::IntegerLiteral));
+    }
+    // Leading whitespace should not cause issues with grammar productions.
+    SUBCASE("Leading Whitespace") {
+        const auto* root = getRoot("   9   ");
 
-TEST_CASE("Erroneous Token") {
-    Lexer::TokenState state = Lexer::lex("^ 8");
-    Ast::Parser parser{state};
+        CHECK_EQ(root->kind(), Ast::NodeKind::File);
+        CHECK_EQ(root->numChildren(), 2); // white space token, integer literal of '9'
+        CHECK_EQ(root->length(), 7);
 
-    const auto* root = parser.file();
-    CHECK_EQ(root->kind(), Ast::NodeKind::File);
-    CHECK_EQ(root->numChildren(), 2); // error, integer literal of '8'
-    CHECK_EQ(root->length(), 3);
+        CHECK(root->tokenMatching(Lexer::SyntaxKind::Whitespace));
+        CHECK(root->nodeMatching<IntegerLiteralNode>());
 
-    CHECK(root->nodeMatching<Ast::Green::IntegerLiteralNode>());
+        const auto* integerLiteralNode = root->nodeMatching<IntegerLiteralNode>();
+        CHECK_EQ(integerLiteralNode->numChildren(), 2);
+        CHECK_EQ(integerLiteralNode->length(), 4);
+        CHECK_EQ(integerLiteralNode->getInteger(), 9);
 
-    const auto* integerLiteralNode = root->nodeMatching<Ast::Green::IntegerLiteralNode>();
-    CHECK_EQ(integerLiteralNode->kind(), Ast::NodeKind::IntegerLiteral);
-    CHECK_EQ(integerLiteralNode->numChildren(), 1);
-    CHECK_EQ(integerLiteralNode->length(), 1);
-    CHECK_EQ(integerLiteralNode->getInteger(), 8);
-
-    CHECK(integerLiteralNode->tokenMatching(Lexer::SyntaxKind::IntegerLiteral));
-}
-
-TEST_CASE("Binary Expression") {
-    auto checkIntegerNode = [](const Ast::GreenNode* node, int numChildren, int length, int literalValue) {
-        const auto* integerLiteral = node->as<Ast::Green::IntegerLiteralNode>();
-        CHECK(integerLiteral);
-        CHECK_EQ(integerLiteral->numChildren(), numChildren);
-        CHECK_EQ(integerLiteral->length(), length);
-        CHECK_EQ(integerLiteral->getInteger(), literalValue);
-    };
-
-    SUBCASE("Basic") {
-        Lexer::TokenState state = Lexer::lex("9 + 5");
+        CHECK(integerLiteralNode->tokenMatching(Lexer::SyntaxKind::IntegerLiteral));
+    }
+    // Erroneous tokens should not result in a complete failure to get output
+    SUBCASE("Error Token") {
+        Lexer::TokenState state = Lexer::lex("^ 8");
         Ast::Parser parser{state};
 
         const auto* root = parser.file();
-        CHECK_EQ(root->numChildren(), 1);
-        CHECK_EQ(root->length(), 5);
+        CHECK_EQ(root->numChildren(), 2); // error, integer literal of '8'
 
-        CHECK(root->nodeMatching<Ast::Green::BinaryExpressionNode>());
+        const auto* integerLiteralNode = root->nodeMatching<IntegerLiteralNode>();
+        CHECK_EQ(integerLiteralNode->getInteger(), 8);
+    }
+}
 
-        const auto* binaryExpression = root->nodeMatching<Ast::Green::BinaryExpressionNode>();
-        CHECK_EQ(binaryExpression->numChildren(), 4);
-        CHECK_EQ(binaryExpression->length(), 5);
+TEST_CASE_FIXTURE(ParserFixture, "Binary Expressions") {
+    using namespace Ast::Green;
 
-        auto lhs = binaryExpression->getLeftExpression();
-        checkIntegerNode(*lhs, 2, 2, 9);
+    SUBCASE("Basic") {
+        const auto* root = getRoot("9 + 5");
+        const auto* binaryExpression = root->nodeMatching<BinaryExpressionNode>();
 
-        auto rhs = binaryExpression->getRightExpression();
-        checkIntegerNode(*rhs, 1, 1, 5);
+        const auto* lhs = checkIs<IntegerLiteralNode>(binaryExpression->getLeftExpression());
+        CHECK_EQ(lhs->getInteger(), 9);
+
+        const auto* rhs = checkIs<IntegerLiteralNode>(binaryExpression->getRightExpression());
+        CHECK_EQ(rhs->getInteger(), 5);
     }
 
     SUBCASE("Left Associativity") {
-        Lexer::TokenState state = Lexer::lex("9 + 5 + 4");
-        Ast::Parser parser{state};
+        const auto* root = getRoot("9 + 5 + 4");
+        const auto* binaryExpression = root->nodeMatching<BinaryExpressionNode>();
 
-        const auto* root = parser.file();
-        CHECK_EQ(root->numChildren(), 1);
-        CHECK_EQ(root->length(), 9);
+        const auto* lhs = checkIs<IntegerLiteralNode>(binaryExpression->getLeftExpression());
+        CHECK_EQ(lhs->getInteger(), 9);
 
-        CHECK(root->nodeMatching<Ast::Green::BinaryExpressionNode>());
+        const auto* rhs = checkIs<BinaryExpressionNode>(binaryExpression->getRightExpression());
 
-        const auto* binaryExpression = root->nodeMatching<Ast::Green::BinaryExpressionNode>();
-        CHECK_EQ(binaryExpression->kind(), Ast::NodeKind::BinaryExpression);
-        CHECK_EQ(binaryExpression->numChildren(), 4);
-        CHECK_EQ(binaryExpression->length(), 9);
+        const auto* nestedLeft = checkIs<IntegerLiteralNode>(rhs->getLeftExpression());
+        CHECK_EQ(nestedLeft->getInteger(), 5);
 
-        auto lhs = binaryExpression->getLeftExpression();
-        checkIntegerNode(*lhs, 2, 2, 9);
-
-        auto rhs = binaryExpression->getRightExpression();
-        CHECK(rhs);
-        const auto* rightExpression = (*rhs)->as<Ast::Green::BinaryExpressionNode>();
-        CHECK(rightExpression);
-        CHECK_EQ(rightExpression->numChildren(), 4);
-        CHECK_EQ(rightExpression->length(), 5);
-
-        auto nestedLhs = rightExpression->getLeftExpression();
-        checkIntegerNode(*nestedLhs, 2, 2, 5);
-
-        auto nestedRhs = rightExpression->getRightExpression();
-        checkIntegerNode(*nestedRhs, 1, 1, 4);
+        const auto* nestedRight = checkIs<IntegerLiteralNode>(rhs->getRightExpression());
+        CHECK_EQ(nestedRight->getInteger(), 4);
     }
 
     SUBCASE("Missing LHS") {
-        Lexer::TokenState state = Lexer::lex(" + 5");
-        Ast::Parser parser{state};
+        const auto* root = getRoot(" + 5");
 
-        const auto* root = parser.file();
-        CHECK_EQ(root->numChildren(), 3);
-        CHECK_EQ(root->length(), 4);
-
-        const auto* integerLiteral = root->nodeMatching<Ast::Green::IntegerLiteralNode>();
+        const auto* integerLiteral = root->nodeMatching<IntegerLiteralNode>();
         CHECK_EQ(integerLiteral->getInteger(), 5);
     }
 
     SUBCASE("Missing RHS") {
-        Lexer::TokenState state = Lexer::lex("9 + ");
-        Ast::Parser parser{state};
-        const auto* root = parser.file();
-        CHECK_EQ(root->numChildren(), 1);
-        CHECK_EQ(root->length(), 4);
+        const auto* root = getRoot("9 + ");
+        const auto* binaryExpression = root->nodeMatching<BinaryExpressionNode>();
 
-        CHECK(root->nodeMatching<Ast::Green::BinaryExpressionNode>());
+        const auto* lhs = checkIs<IntegerLiteralNode>(binaryExpression->getLeftExpression());
+        CHECK_EQ(lhs->getInteger(), 9);
 
-        const auto* binaryExpression = root->nodeMatching<Ast::Green::BinaryExpressionNode>();
-        CHECK_EQ(binaryExpression->numChildren(), 4);
-        CHECK_EQ(binaryExpression->length(), 4);
-
-        auto lhs = binaryExpression->getLeftExpression();
-        checkIntegerNode(*lhs, 2, 2, 9);
-
-        const auto* rhs = *binaryExpression->getRightExpression();
-        CHECK_EQ(rhs->kind(), Ast::NodeKind::ErrorNode);
+        auto rhs = binaryExpression->getRightExpression();
+        REQUIRE(rhs);
+        CHECK_EQ((*rhs)->kind(), Ast::NodeKind::ErrorNode);
     }
 }
 
-TEST_CASE("Variable Reference") {
+TEST_CASE_FIXTURE(ParserFixture, "Variable References") {
+    using namespace Ast::Green;
+
     SUBCASE("Binary Expression") {
-        Lexer::TokenState state = Lexer::lex("i + ii");
-        Ast::Parser parser{ state };
+        const auto* root = getRoot("i + ii");
 
-        const auto* root = parser.file();
-        const auto* binaryExpression = root->nodeMatching<Ast::Green::BinaryExpressionNode>();
+        const auto* binaryExpression = root->nodeMatching<BinaryExpressionNode>();
 
-        auto lhs = (*binaryExpression->getLeftExpression())->as<Ast::Green::VariableReferenceNode>();
+        const auto* lhs = checkIs<VariableReferenceNode>(binaryExpression->getLeftExpression());
         CHECK_EQ(lhs->getVariableName(), "i");
 
-        auto rhs = (*binaryExpression->getRightExpression())->as<Ast::Green::VariableReferenceNode>();
+        const auto* rhs = checkIs<VariableReferenceNode>(binaryExpression->getRightExpression());
         CHECK_EQ(rhs->getVariableName(), "ii");
     }
     SUBCASE("Literal") {
