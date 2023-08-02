@@ -126,7 +126,7 @@ TEST_CASE("Parse File with Whitespace") {
 }
 
 TEST_CASE("Erroneous Token") {
-    Lexer::TokenState state = Lexer::lex("i 8");
+    Lexer::TokenState state = Lexer::lex("^ 8");
     Ast::Parser parser{state};
 
     const auto* root = parser.file();
@@ -237,6 +237,31 @@ TEST_CASE("Binary Expression") {
 
         const auto* rhs = *binaryExpression->getRightExpression();
         CHECK_EQ(rhs->kind(), Ast::NodeKind::ErrorNode);
+    }
+}
+
+TEST_CASE("Variable Reference") {
+    SUBCASE("Binary Expression") {
+        Lexer::TokenState state = Lexer::lex("i + ii");
+        Ast::Parser parser{ state };
+
+        const auto* root = parser.file();
+        const auto* binaryExpression = root->nodeMatching<Ast::Green::BinaryExpressionNode>();
+
+        auto lhs = (*binaryExpression->getLeftExpression())->as<Ast::Green::VariableReferenceNode>();
+        CHECK_EQ(lhs->getVariableName(), "i");
+
+        auto rhs = (*binaryExpression->getRightExpression())->as<Ast::Green::VariableReferenceNode>();
+        CHECK_EQ(rhs->getVariableName(), "ii");
+    }
+    SUBCASE("Literal") {
+        Lexer::TokenState state = Lexer::lex("iii");
+        Ast::Parser parser{ state };
+
+        const auto* root = parser.file();
+
+        const auto* variableReference = root->nodeMatching<Ast::Green::VariableReferenceNode>();
+        CHECK_EQ(variableReference->getVariableName(), "iii");
     }
 }
 

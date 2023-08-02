@@ -15,6 +15,7 @@ namespace Ast
 enum class NodeKind : uint16_t {
     ErrorNode,
     IntegerLiteral,
+    VariableReference,
     BinaryExpression,
     File,
 };
@@ -140,6 +141,21 @@ struct IntegerLiteralNode : public GreenNode {
     }
 };
 
+struct VariableReferenceNode : public GreenNode {
+    constexpr static bool Matches(NodeKind kind) {
+        return kind == NodeKind::VariableReference;
+    }
+
+    // it's not currently possible to ever be null, but illustrates the point of not being able to rely on the green
+    // tree to be valid, or well-formed.
+    std::optional<std::string_view> getVariableName() const {
+        if (const auto* maybeToken = tokenMatching(Lexer::SyntaxKind::Identifier)) {
+            return maybeToken->text;
+        }
+        return std::nullopt;
+    }
+};
+
 struct BinaryExpressionNode : public GreenNode {
     constexpr static bool Matches(NodeKind kind) {
         return kind == NodeKind::BinaryExpression;
@@ -248,8 +264,6 @@ public:
         while (!at(Lexer::SyntaxKind::Eof)) {
             if (auto* lit = expression()) {
                 appendChild(id, lit);
-            } else {
-                appendChild(id, error());
             }
         }
 
@@ -309,12 +323,16 @@ public:
         return *rightTightness > *leftTightness;
     }
 
-    // literal = integer_literal
+    // literal = integer_literal | variable_reference
     GreenNode* literal() {
         if (at(Lexer::SyntaxKind::IntegerLiteral)) {
             const auto id = start();
             advance();
             return finish(id, NodeKind::IntegerLiteral);
+        } else if (at(Lexer::SyntaxKind::Identifier)) {
+            const auto id = start();
+            advance();
+            return finish(id, NodeKind::VariableReference);
         }
         return error();
     }
