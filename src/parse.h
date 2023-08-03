@@ -17,6 +17,7 @@ enum class NodeKind : uint16_t {
     IntegerLiteral,
     VariableReference,
     BinaryExpression,
+    ReturnExpression,
     File,
 };
 
@@ -173,6 +174,25 @@ struct BinaryExpressionNode : public GreenNode {
         return nodeMatching<GreenNode>(1);
     }
 };
+
+struct ReturnExpressionNode : public GreenNode {
+    constexpr static bool Matches(NodeKind kind) {
+        return kind == NodeKind::ReturnExpression;
+    }
+
+    std::optional<const GreenNode*> getExpression() const {
+        return nodeMatching<GreenNode>(0);
+    }
+
+    std::optional<const Lexer::Token*> getKeyword() const {
+        return tokenMatching(Lexer::SyntaxKind::ReturnKeyword);
+    }
+
+    std::optional<const Lexer::Token*> getSemicolon() const {
+        return tokenMatching(Lexer::SyntaxKind::Semicolon);
+    }
+};
+
 }
 
 class Parser {
@@ -256,18 +276,40 @@ public:
     explicit Parser(const Lexer::TokenState& tokenState)
         : tokenState_(tokenState) { }
 
-    // file = expression* EOF
+    // file = statement* EOF
     GreenNode* file() {
         const auto id = start();
 
         // do not consume EOF token.
         while (!at(Lexer::SyntaxKind::Eof)) {
-            if (auto* lit = expression()) {
+            if (auto* lit = statement()) {
                 appendChild(id, lit);
             }
         }
 
         return finish(id, NodeKind::File);
+    }
+
+    // statement = return_statement | expression
+    GreenNode* statement() {
+        // "return" expression ';'
+        if (at(Lexer::SyntaxKind::ReturnKeyword)) {
+            const auto id = start();
+            advance(); // Consume "return" keyword
+
+            // Consume an expression or emit an error
+            if (auto* expr = expression()) {
+                appendChild(id, expr);
+            } else {
+                appendChild(id, error());
+            }
+
+            if (at(Lexer::SyntaxKind::Semicolon)) {
+                advance();
+            }
+            return finish(id, NodeKind::ReturnExpression);
+        }
+        return expression();
     }
 
     // expression = literal '+' expression
@@ -334,7 +376,13 @@ public:
             advance();
             return finish(id, NodeKind::VariableReference);
         }
-        return error();
+
+        // end of a statement - not some kind of literal
+        if (at(Lexer::SyntaxKind::Semicolon)) {
+            return nullptr;
+        } else {
+            return error();
+        }
     }
 
     // Anything can be an error.

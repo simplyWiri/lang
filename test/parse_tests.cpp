@@ -234,13 +234,60 @@ TEST_CASE_FIXTURE(ParserFixture, "Variable References") {
         CHECK_EQ(rhs->getVariableName(), "ii");
     }
     SUBCASE("Literal") {
-        Lexer::TokenState state = Lexer::lex("iii");
-        Ast::Parser parser{ state };
+        const auto* root = getRoot("iii");
 
-        const auto* root = parser.file();
-
-        const auto* variableReference = root->nodeMatching<Ast::Green::VariableReferenceNode>();
+        const auto* variableReference = root->nodeMatching<VariableReferenceNode>();
         CHECK_EQ(variableReference->getVariableName(), "iii");
+    }
+}
+
+TEST_CASE_FIXTURE(ParserFixture, "Return Expression") {
+    using namespace Ast::Green;
+
+    SUBCASE("Return Literal") {
+        const auto* root = getRoot("return 4;");
+
+        const auto* returnExpression = root->nodeMatching<ReturnExpressionNode>();
+        CHECK(returnExpression->getKeyword());
+        CHECK(returnExpression->getSemicolon());
+
+        const auto* literal = checkIs<IntegerLiteralNode>(returnExpression->getExpression());
+        CHECK_EQ(literal->getInteger(), 4);
+    }
+    SUBCASE("Return Expression") {
+        const auto* root = getRoot("return 6 + i;");
+
+        const auto* returnExpression = root->nodeMatching<ReturnExpressionNode>();
+        CHECK(returnExpression->getKeyword());
+        CHECK(returnExpression->getSemicolon());
+
+        const auto* binaryExpression = checkIs<BinaryExpressionNode>(returnExpression->getExpression());
+
+        const auto* lhs = checkIs<IntegerLiteralNode>(binaryExpression->getLeftExpression());
+        CHECK_EQ(lhs->getInteger(), 6);
+
+        const auto* rhs = checkIs<VariableReferenceNode>(binaryExpression->getRightExpression());
+        CHECK_EQ(rhs->getVariableName(), "i");
+    }
+
+    SUBCASE("Missing Semicolon") {
+        const auto* root = getRoot("return 9");
+
+        const auto* returnExpression = root->nodeMatching<ReturnExpressionNode>();
+        CHECK(returnExpression->getKeyword());
+        CHECK_EQ(returnExpression->getSemicolon(), nullptr);
+
+        const auto* lhs = checkIs<IntegerLiteralNode>(returnExpression->getExpression());
+        CHECK_EQ(lhs->getInteger(), 9);
+    }
+
+    SUBCASE("Missing Expression") {
+        const auto* root = getRoot("return ;");
+
+        const auto* returnExpression = root->nodeMatching<ReturnExpressionNode>();
+        CHECK(returnExpression->getKeyword());
+        CHECK(returnExpression->getSemicolon());
+        CHECK_EQ(returnExpression->getExpression().value()->kind(), Ast::NodeKind::ErrorNode);
     }
 }
 
