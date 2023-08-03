@@ -77,12 +77,12 @@ TEST_CASE("Green Node Access") {
     CHECK_EQ(packedNode->nodeMatching<Ast::GreenNode>(1), secndNode);
     CHECK_EQ(packedNode->nodeMatching<Ast::GreenNode>(2), nullptr);
 
-    CHECK_EQ(packedNode->tokenMatching(Lexer::SyntaxKind::IntegerLiteral, 0), &firstToken);
-    CHECK_EQ(packedNode->tokenMatching(Lexer::SyntaxKind::IntegerLiteral, 1), &secndToken);
-    CHECK_EQ(packedNode->tokenMatching(Lexer::SyntaxKind::IntegerLiteral, 2), nullptr);
+    CHECK_EQ(packedNode->tokenMatching({Lexer::SyntaxKind::IntegerLiteral}, 0), &firstToken);
+    CHECK_EQ(packedNode->tokenMatching({Lexer::SyntaxKind::IntegerLiteral}, 1), &secndToken);
+    CHECK_EQ(packedNode->tokenMatching({Lexer::SyntaxKind::IntegerLiteral}, 2), nullptr);
 
     // Token types which don't exist simply return a nullptr, this is a soft interface to support erroneous trees.
-    CHECK_EQ(packedNode->tokenMatching(Lexer::SyntaxKind::ErrorToken, 0), nullptr);
+    CHECK_EQ(packedNode->tokenMatching({Lexer::SyntaxKind::ErrorToken}, 0), nullptr);
 }
 
 struct ParserFixture {
@@ -136,7 +136,7 @@ TEST_CASE_FIXTURE(ParserFixture, "Baseline") {
         CHECK_EQ(integerLiteralNode->getInteger(), 9);
 
         // Ensure the token is a child of its grammar production
-        CHECK(integerLiteralNode->tokenMatching(Lexer::SyntaxKind::IntegerLiteral));
+        CHECK(integerLiteralNode->tokenMatching({Lexer::SyntaxKind::IntegerLiteral}));
     }
     // Leading whitespace should not cause issues with grammar productions.
     SUBCASE("Leading Whitespace") {
@@ -146,7 +146,7 @@ TEST_CASE_FIXTURE(ParserFixture, "Baseline") {
         CHECK_EQ(root->numChildren(), 2); // white space token, integer literal of '9'
         CHECK_EQ(root->length(), 7);
 
-        CHECK(root->tokenMatching(Lexer::SyntaxKind::Whitespace));
+        CHECK(root->tokenMatching({Lexer::SyntaxKind::Whitespace}));
         CHECK(root->nodeMatching<IntegerLiteralNode>());
 
         const auto* integerLiteralNode = root->nodeMatching<IntegerLiteralNode>();
@@ -154,7 +154,7 @@ TEST_CASE_FIXTURE(ParserFixture, "Baseline") {
         CHECK_EQ(integerLiteralNode->length(), 4);
         CHECK_EQ(integerLiteralNode->getInteger(), 9);
 
-        CHECK(integerLiteralNode->tokenMatching(Lexer::SyntaxKind::IntegerLiteral));
+        CHECK(integerLiteralNode->tokenMatching({Lexer::SyntaxKind::IntegerLiteral}));
     }
     // Erroneous tokens should not result in a complete failure to get output
     SUBCASE("Error Token") {
@@ -183,22 +183,6 @@ TEST_CASE_FIXTURE(ParserFixture, "Binary Expressions") {
         CHECK_EQ(rhs->getInteger(), 5);
     }
 
-    SUBCASE("Left Associativity") {
-        const auto* root = getRoot("9 + 5 + 4");
-        const auto* binaryExpression = root->nodeMatching<BinaryExpressionNode>();
-
-        const auto* lhs = checkIs<IntegerLiteralNode>(binaryExpression->getLeftExpression());
-        CHECK_EQ(lhs->getInteger(), 9);
-
-        const auto* rhs = checkIs<BinaryExpressionNode>(binaryExpression->getRightExpression());
-
-        const auto* nestedLeft = checkIs<IntegerLiteralNode>(rhs->getLeftExpression());
-        CHECK_EQ(nestedLeft->getInteger(), 5);
-
-        const auto* nestedRight = checkIs<IntegerLiteralNode>(rhs->getRightExpression());
-        CHECK_EQ(nestedRight->getInteger(), 4);
-    }
-
     SUBCASE("Missing LHS") {
         const auto* root = getRoot(" + 5");
 
@@ -216,6 +200,55 @@ TEST_CASE_FIXTURE(ParserFixture, "Binary Expressions") {
         auto rhs = binaryExpression->getRightExpression();
         REQUIRE(rhs);
         CHECK_EQ((*rhs)->kind(), Ast::NodeKind::ErrorNode);
+    }
+    SUBCASE("Nested Expressions") {
+        const auto* root = getRoot("i = 9 + 5");
+        const auto* binaryExpression = root->nodeMatching<BinaryExpressionNode>();
+
+        const auto* lhs = checkIs<VariableReferenceNode>(binaryExpression->getLeftExpression());
+        CHECK_EQ(lhs->getVariableName(), "i");
+        CHECK_EQ(binaryExpression->getOperator().value()->kind, Lexer::SyntaxKind::Equals);
+
+        auto rhs = checkIs<BinaryExpressionNode>(binaryExpression->getRightExpression());
+
+        const auto* nestedLhs = checkIs<IntegerLiteralNode>(rhs->getLeftExpression());
+        CHECK_EQ(nestedLhs->getInteger(), 9);
+
+        const auto* nestedRhs = checkIs<IntegerLiteralNode>(rhs->getRightExpression());
+        CHECK_EQ(nestedRhs->getInteger(), 5);
+    }
+    SUBCASE("Left Associativity") {
+        // expands to (9 + 5) + 4
+        const auto* root = getRoot("9 + 5 + 4");
+        const auto* binaryExpression = root->nodeMatching<BinaryExpressionNode>();
+
+        const auto* lhs = checkIs<BinaryExpressionNode>(binaryExpression->getLeftExpression());
+
+        const auto* nestedLeft = checkIs<IntegerLiteralNode>(lhs->getLeftExpression());
+        CHECK_EQ(nestedLeft->getInteger(), 9);
+
+        const auto* nestedRight = checkIs<IntegerLiteralNode>(lhs->getRightExpression());
+        CHECK_EQ(nestedRight->getInteger(), 5);
+
+        const auto* rhs = checkIs<IntegerLiteralNode>(binaryExpression->getRightExpression());
+        CHECK_EQ(rhs->getInteger(), 4);
+    }
+    SUBCASE("Right Associativity") {
+        // expands to i = (j = 6)
+        const auto* root = getRoot("i = j = 6");
+        const auto* binaryExpression = root->nodeMatching<BinaryExpressionNode>();
+
+        const auto* lhs = checkIs<VariableReferenceNode>(binaryExpression->getLeftExpression());
+        CHECK_EQ(lhs->getVariableName(), "i");
+        CHECK_EQ(binaryExpression->getOperator().value()->kind, Lexer::SyntaxKind::Equals);
+
+        auto rhs = checkIs<BinaryExpressionNode>(binaryExpression->getRightExpression());
+
+        const auto* nestedLhs = checkIs<VariableReferenceNode>(rhs->getLeftExpression());
+        CHECK_EQ(nestedLhs->getVariableName(), "j");
+
+        const auto* nestedRhs = checkIs<IntegerLiteralNode>(rhs->getRightExpression());
+        CHECK_EQ(nestedRhs->getInteger(), 6);
     }
 }
 

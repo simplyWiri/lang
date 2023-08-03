@@ -92,12 +92,13 @@ public:
         return nullptr;
     }
 
-    const Lexer::Token* tokenMatching(Lexer::SyntaxKind tokenKind, int ithOccurrence = 0) const {
+    const Lexer::Token* tokenMatching(const absl::InlinedVector<Lexer::SyntaxKind, 16>& tokenKinds, int ithOccurrence = 0) const {
         int currentIdx = 0;
         for (int i = 0; i < numChildren_; i++) {
             const auto& child = getChild(i);
             if (const auto* token = child.get<Lexer::Token>()) {
-                if (token->is(tokenKind)) {
+                const auto iter = std::find(tokenKinds.begin(), tokenKinds.end(), token->kind);
+                if (iter != tokenKinds.end()) {
                     if (currentIdx++ == ithOccurrence) {
                         return token;
                     }
@@ -133,7 +134,7 @@ struct IntegerLiteralNode : public GreenNode {
     // it's not currently possible to ever be null, but illustrates the point of not being able to rely on the green
     // tree to be valid, or well-formed.
     std::optional<int> getInteger() const {
-        if (const auto* maybeToken = tokenMatching(Lexer::SyntaxKind::IntegerLiteral)) {
+        if (const auto* maybeToken = tokenMatching( {Lexer::SyntaxKind::IntegerLiteral })) {
             int value;
             std::from_chars(maybeToken->text.begin(), maybeToken->text.end(), value);
             return value;
@@ -150,7 +151,7 @@ struct VariableReferenceNode : public GreenNode {
     // it's not currently possible to ever be null, but illustrates the point of not being able to rely on the green
     // tree to be valid, or well-formed.
     std::optional<std::string_view> getVariableName() const {
-        if (const auto* maybeToken = tokenMatching(Lexer::SyntaxKind::Identifier)) {
+        if (const auto* maybeToken = tokenMatching({Lexer::SyntaxKind::Identifier})) {
             return maybeToken->text;
         }
         return std::nullopt;
@@ -167,7 +168,7 @@ struct BinaryExpressionNode : public GreenNode {
     }
 
     std::optional<const Lexer::Token*> getOperator() const {
-        return tokenMatching(Lexer::SyntaxKind::Plus);
+        return tokenMatching({Lexer::SyntaxKind::Plus, Lexer::SyntaxKind::Equals});
     }
 
     std::optional<const GreenNode*> getRightExpression() const {
@@ -185,11 +186,11 @@ struct ReturnExpressionNode : public GreenNode {
     }
 
     std::optional<const Lexer::Token*> getKeyword() const {
-        return tokenMatching(Lexer::SyntaxKind::ReturnKeyword);
+        return tokenMatching({Lexer::SyntaxKind::ReturnKeyword});
     }
 
     std::optional<const Lexer::Token*> getSemicolon() const {
-        return tokenMatching(Lexer::SyntaxKind::Semicolon);
+        return tokenMatching({Lexer::SyntaxKind::Semicolon});
     }
 };
 
@@ -341,9 +342,10 @@ public:
             // This may not be immediately clear how this functions. We map a syntax kind, which represents some kind of
             // binary expression, to a pair of 'Precedence' levels, i.e. how tightly a token should bind to other tokens
             // the reason we use a pair, is so we can specify left/right associative binding, beyond just precedence. If
-            // the left value is less than the right, an operator is left associative, otherwise it is right associative
+            // the right value is less than the less, an operator is left associative, otherwise it is right associative
             static absl::flat_hash_map<Lexer::SyntaxKind, std::pair<int, int>> map = {
-                    { Lexer::SyntaxKind::Plus, {1, 2} }
+                    { Lexer::SyntaxKind::Equals, {1, 2} },
+                    { Lexer::SyntaxKind::Plus, {4, 3} },
             };
 
             const auto maybeIter = map.find(kind);
